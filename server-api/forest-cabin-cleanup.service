@@ -1,0 +1,10 @@
+[Unit]
+Description=Forest Cabin retention cleanup
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/forest-cabin-api
+ExecStart=/usr/bin/python3 /path/to/forest-cabin-api/cleanup_retention.py

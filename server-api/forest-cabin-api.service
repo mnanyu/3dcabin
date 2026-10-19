@@ -1,0 +1,20 @@
+[Unit]
+Description=Forest Cabin backpack API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/forest-cabin-api
+EnvironmentFile=/path/to/forest-cabin-api/admin.env
+ExecStart=/usr/bin/python3 /path/to/forest-cabin-api/app.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/path/to/forest-cabin-api/data
+
+[Install]
+WantedBy=multi-user.target

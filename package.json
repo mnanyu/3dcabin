@@ -1,0 +1,17 @@
+{
+  "name": "forest-cabin-3d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Procedural forest cabin scene built with Three.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.cjs",
+    "build": "esbuild main.js --bundle --minify --format=iife --target=chrome100 --legal-comments=none --outfile=.build/app.min.js && node build-standalone.mjs"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5"
+  }
+}

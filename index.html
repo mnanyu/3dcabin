@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1211" />
+  <meta name="description" content="一个完全由代码生成的 3D 森林小屋，带池塘、小渔夫与可交互的钓鱼玩法。" />
+  <title>林间小屋 · 程序化 3D 森林</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main id="app">
+    <canvas id="scene" aria-label="可交互的 3D 森林小屋场景"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+
+    <header class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none">
+          <path d="M24 5 9.5 26h8.8L8 40h32L29.7 26h8.8L24 5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M24 29v11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="brand-copy">
+        <p class="eyebrow">PROCEDURAL&nbsp; / &nbsp;WOODLAND Nº 01</p>
+        <h1>林间小屋</h1>
+        <p class="subtitle">暮色森林里，有一盏灯还亮着</p>
+      </div>
+    </header>
+
+    <button class="contact-trigger" id="contact-toggle" type="button" aria-expanded="false" title="联系方式">
+      <span class="contact-trigger-dot"></span>
+      <span>联系我</span>
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M8 12h8M13 7l5 5-5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <nav class="toolbar" aria-label="场景控制">
+      <button class="tool" id="light-toggle" type="button" aria-pressed="false" title="切换昼夜">
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path class="icon-moon" d="M20.2 14.4A8.2 8.2 0 0 1 9.6 3.8 8.7 8.7 0 1 0 20.2 14.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle class="icon-sun" cx="12" cy="12" r="4.1" stroke="currentColor" stroke-width="1.5"/>
+          <path class="icon-sun" d="M12 2.8v2M12 19.2v2M2.8 12h2M19.2 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M18.5 5.5l-1.4 1.4M6.9 17.1l-1.4 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <span class="tool-label" id="light-label">黄昏</span>
+      </button>
+      <span class="tool-sep" aria-hidden="true"></span>
+      <button class="tool" id="rotate-toggle" type="button" aria-pressed="false" title="自动环绕">
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M20.2 11.3A8.3 8.3 0 0 0 6.1 6.2L3.8 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3.8 4.6v3.9h3.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3.8 12.7a8.3 8.3 0 0 0 14.1 5.1l2.3-2.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M20.2 19.4v-3.9h-3.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="tool-label">环绕</span>
+      </button>
+      <span class="tool-sep" aria-hidden="true"></span>
+      <button class="tool" id="reset-view" type="button" title="重置视角">
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 9.2 12 3l8 6.2V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M9.3 21v-6.1h5.4V21" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+        <span class="tool-label">复位</span>
+      </button>
+      <span class="tool-sep" aria-hidden="true"></span>
+      <button class="tool" id="memory-toggle" type="button" aria-expanded="false" title="钓鱼背包">
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M8.2 8V6.7a3.8 3.8 0 0 1 7.6 0V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <rect x="4.8" y="8" width="14.4" height="11.2" rx="3.2" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M8.8 12h6.4M8.8 15.5h4.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <span class="tool-label">背包</span>
+      </button>
+      <span class="tool-sep" aria-hidden="true"></span>
+      <button class="tool" id="leaderboard-toggle" type="button" aria-expanded="false" title="全站渔获榜">
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M8 4h8v4.2a4 4 0 0 1-8 0V4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M8 5.2H4v1.6a4 4 0 0 0 4 4M16 5.2h4v1.6a4 4 0 0 1-4 4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M12 12.2v5.1M8.5 20.8h7M9.5 17.3h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="tool-label">榜单</span>
+      </button>
+      <span class="tool-sep" aria-hidden="true"></span>
+      <button class="tool" id="feedback-toggle" type="button" aria-expanded="false" title="意见反馈">
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M20 11.3c0 3.5-3.6 6.4-8 6.4-1 0-1.9-.1-2.8-.4L5 19l1.2-3.2C4.8 14.6 4 13 4 11.3 4 7.8 7.6 4.9 12 4.9s8 2.9 8 6.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M8.6 11.3h.01M12 11.3h.01M15.4 11.3h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+        <span class="tool-label">反馈</span>
+      </button>
+    </nav>
+
+    <div class="fp-badge" id="fp-badge" aria-live="polite">
+      <span class="fp-badge-dot"></span>
+      <strong>第一视角垂钓</strong>
+      <span>成功上鱼后退出</span>
+    </div>
+
+    <div class="scene-meta" aria-hidden="true">
+      <span class="live-dot"></span>
+      <span>实时渲染</span>
+      <span class="meta-divider"></span>
+      <span id="tri-count">— 三角面</span>
+    </div>
+
+    <footer class="hint">
+      <span class="hint-line"></span>
+      <span>拖拽旋转</span><i>·</i><span>滚轮缩放</span><i>·</i><span>右键平移</span>
+    </footer>
+
+    <section class="fishing-hud" id="fishing-hud" aria-label="溪畔钓鱼">
+      <div class="catch-counter" title="最近 30 天渔获">
+        <svg class="catch-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3.4 12c3.5-4.2 7.5-5.1 10.1-3.5 1.2.7 2.1 1.9 2.7 3.5-.6 1.6-1.5 2.8-2.7 3.5-2.6 1.6-6.6.7-10.1-3.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M16.2 12 21 8.8v6.5L16.2 12Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <circle cx="7.2" cy="11.1" r="0.7" fill="currentColor"/>
+        </svg>
+        <span id="catch-count">0</span>
+        <small>条 · 30天</small>
+      </div>
+      <span class="fishing-sep" aria-hidden="true"></span>
+      <div class="fishing-copy">
+        <p class="fishing-kicker">溪畔垂钓 · FISHING</p>
+        <p class="fishing-status" id="fishing-status" aria-live="polite">点击「抛竿」，静候鱼儿咬钩</p>
+      </div>
+      <button class="cast-button" id="cast-button" type="button">
+        <svg class="cast-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 20 16.4 5.7c.5-.6 1.4-.6 1.9-.1.5.5.5 1.4-.1 1.9L5.8 21.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M16.8 5.5c1.1 1.1 1.6 2.4 1.4 3.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <path d="M7.2 20.2c.9.9 2 .9 2.9 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <span id="cast-label">抛竿</span>
+      </button>
+    </section>
+
+    <div class="catch-toast" id="catch-toast" role="status" aria-live="polite">
+      <span class="catch-toast-kicker">CATCH</span>
+      <strong id="catch-detail">虹鳟 · 32 cm</strong>
+    </div>
+
+    <div class="memory-backdrop" id="memory-backdrop"></div>
+    <section class="memory-panel" id="memory-panel" role="dialog" aria-modal="true" aria-labelledby="memory-title" aria-hidden="true">
+      <header class="memory-header">
+        <div>
+          <p class="memory-kicker">BACKPACK · 30 DAYS</p>
+          <h2 id="memory-title">钓鱼背包</h2>
+        </div>
+        <button class="memory-close" id="memory-close" type="button" aria-label="关闭背包">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </header>
+
+      <div class="memory-summary">
+        <span class="memory-count" id="memory-count">0</span>
+        <div class="memory-summary-copy">
+          <p>最近 30 天渔获</p>
+          <span class="memory-sync" id="memory-sync" aria-live="polite">正在连接背包…</span>
+        </div>
+      </div>
+
+      <form class="memory-form" id="memory-form">
+        <label for="memory-name">钓客称呼 · 不可重名</label>
+        <div class="memory-name-row">
+          <input id="memory-name" name="name" maxlength="12" autocomplete="nickname" placeholder="无名钓客" />
+          <button class="memory-save" type="submit">保存</button>
+        </div>
+      </form>
+      <p class="memory-error" id="memory-error" role="alert" aria-live="polite"></p>
+
+      <section class="backpack-contents">
+        <div class="memory-board-head">
+          <h3>背包内容</h3>
+          <span id="backpack-total">0 条</span>
+        </div>
+        <div class="backpack-species" id="backpack-species"></div>
+        <ul class="backpack-list" id="backpack-list">
+          <li class="memory-empty">背包还是空的，去钓一条鱼吧</li>
+        </ul>
+      </section>
+
+      <p class="memory-note">匿名背包数据保存在服务器。背包展示最近 30 天；服务器数据按活跃程度保留：有渔获 6 个月，有称呼无渔获 3 个月，无称呼无渔获 1 个月。</p>
+    </section>
+
+    <section class="memory-panel" id="leaderboard-panel" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title" aria-hidden="true">
+      <header class="memory-header">
+        <div>
+          <p class="memory-kicker">LEADERBOARD · 30 DAYS</p>
+          <h2 id="leaderboard-title">渔获榜</h2>
+        </div>
+        <button class="memory-close" id="leaderboard-close" type="button" aria-label="关闭渔获榜">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </header>
+
+      <p class="leaderboard-intro">全站钓客最近 30 天的渔获数量排行。</p>
+      <div class="memory-board">
+        <div class="memory-board-head">
+          <h3>全站渔获榜</h3>
+          <span>TOP 5</span>
+        </div>
+        <ol class="memory-list" id="memory-leaderboard">
+          <li class="memory-empty">还没有人留下渔获</li>
+        </ol>
+      </div>
+      <p class="memory-note">排行榜与背包分开统计，数据每 30 天滚动更新。</p>
+    </section>
+
+    <section class="memory-panel contact-panel" id="contact-panel" role="dialog" aria-modal="true" aria-labelledby="contact-title" aria-hidden="true">
+      <header class="memory-header">
+        <div>
+          <p class="memory-kicker">CONTACT · 联系我</p>
+          <h2 id="contact-title">找到我</h2>
+        </div>
+        <button class="memory-close" id="contact-close" type="button" aria-label="关闭联系方式">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </header>
+
+      <ul class="contact-list" id="contact-list">
+        <li>
+          <a class="contact-row" href="https://github.com/yourname" target="_blank" rel="noopener noreferrer">
+            <span class="contact-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M8.5 7.5 4 12l4.5 4.5M15.5 7.5 20 12l-4.5 4.5M13.5 5l-3 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="contact-copy"><small>GitHub</small><strong>yourname</strong></span>
+            <span class="contact-action">打开 ↗</span>
+          </a>
+        </li>
+        <li>
+          <button class="contact-row" type="button" data-copy="123456789">
+            <span class="contact-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 11.3c0 3.4-3.6 6.1-8 6.1-1 0-2-.1-2.9-.4L5 19l1.2-3.1C4.8 14.7 4 13.1 4 11.3c0-3.4 3.6-6.1 8-6.1s8 2.7 8 6.1Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="9" cy="11" r="0.7" fill="currentColor"/><circle cx="15" cy="11" r="0.7" fill="currentColor"/></svg>
+            </span>
+            <span class="contact-copy"><small>QQ</small><strong>123456789</strong></span>
+            <span class="contact-action">复制</span>
+          </button>
+        </li>
+        <li>
+          <button class="contact-row" type="button" data-copy="123456789">
+            <span class="contact-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M16.5 9.4c0 2.5-2.7 4.5-6 4.5-.8 0-1.5-.1-2.2-.3L6 15l1-2.5c-1-1-1.6-2.2-1.6-3.1 0-2.5 2.7-4.5 6-4.5s5.1 2 5.1 4.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M21 14.8c0 2-2.2 3.6-4.9 3.6-.7 0-1.4-.1-2-.3L11 19l.9-2.1" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="9.5" r="0.6" fill="currentColor"/><circle cx="12.5" cy="9.5" r="0.6" fill="currentColor"/></svg>
+            </span>
+            <span class="contact-copy"><small>微信（同 QQ）</small><strong>123456789</strong></span>
+            <span class="contact-action">复制</span>
+          </button>
+        </li>
+        <li>
+          <a class="contact-row" href="mailto:you@example.com">
+            <span class="contact-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5.5" width="17" height="13" rx="2.2" stroke="currentColor" stroke-width="1.4"/><path d="m4.5 7 7.5 6 7.5-6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="contact-copy"><small>邮箱</small><strong>you@example.com</strong></span>
+            <span class="contact-action">发信 ↗</span>
+          </a>
+        </li>
+        <li>
+          <button class="contact-row is-muted" type="button" disabled>
+            <span class="contact-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M7.2 4.7h2.2l1 3.2-1.6 1.3a13.3 13.3 0 0 0 5.9 5.9l1.3-1.6 3.2 1v2.2a2.3 2.3 0 0 1-2.5 2.3C10 18.4 5.6 14 4.9 7.2a2.3 2.3 0 0 1 2.3-2.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="contact-copy"><small>手机号</small><strong>待补充</strong></span>
+            <span class="contact-action">—</span>
+          </button>
+        </li>
+      </ul>
+      <p class="contact-status" id="contact-status">GitHub / 邮箱点击打开，QQ / 微信点击复制。</p>
+      <p class="memory-note">微信与 QQ 同号；手机号暂未公开，填写后即可点击复制。</p>
+    </section>
+
+    <section class="memory-panel feedback-panel" id="feedback-panel" role="dialog" aria-modal="true" aria-labelledby="feedback-title" aria-hidden="true">
+      <header class="memory-header">
+        <div>
+          <p class="memory-kicker">FEEDBACK · 意见</p>
+          <h2 id="feedback-title">反馈</h2>
+        </div>
+        <button class="memory-close" id="feedback-close" type="button" aria-label="关闭反馈">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </header>
+
+      <p class="feedback-intro">发现 bug、想要新功能，或者只是想说点什么，都可以写在这里。提交后会发送到站长邮箱。</p>
+      <form class="feedback-form" id="feedback-form">
+        <label for="feedback-message">反馈内容</label>
+        <textarea id="feedback-message" name="message" rows="5" maxlength="1000" placeholder="写下你的想法…" required></textarea>
+        <label for="feedback-contact">联系方式 <span>可选</span></label>
+        <input id="feedback-contact" name="contact" maxlength="80" autocomplete="email" placeholder="邮箱 / QQ / 微信">
+        <input class="feedback-honey" id="feedback-website" name="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <button class="memory-save feedback-submit" id="feedback-submit" type="submit">发送反馈</button>
+        <p class="feedback-status" id="feedback-status" role="status" aria-live="polite"></p>
+      </form>
+      <p class="memory-note">也可以直接发邮件到 <a href="mailto:you@example.com">you@example.com</a>。</p>
+    </section>
+
+    <div class="loader" id="loader">
+      <div class="loader-inner">
+        <svg class="loader-cabin" viewBox="0 0 96 74" fill="none" aria-hidden="true">
+          <path d="M9 39 48 9l39 30" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M19 35v31h58V35" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M42 66V50h12v16M29 46h9v9h-9zM58 46h9v9h-9z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M72 20v-9h6v14" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        </svg>
+        <p class="loader-kicker">BUILDING THE CABIN &amp; POND</p>
+        <div class="loader-bar"><i></i></div>
+        <p class="loader-text">正在搭建木屋与码头…</p>
+      </div>
+    </div>
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js",
+        "three/addons/": "./vendor/addons/"
+      }
+    }
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Forest Cabin retention cleanup
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
