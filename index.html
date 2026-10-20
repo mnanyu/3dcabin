@@ -81,6 +81,15 @@
         <span class="tool-label">榜单</span>
       </button>
       <span class="tool-sep" aria-hidden="true"></span>
+      <button class="tool" id="encyclopedia-toggle" type="button" aria-expanded="false" title="鱼种图鉴">
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4.5 5.2c2.8-.8 5.3-.2 7.5 1.5v12.1c-2.2-1.7-4.7-2.3-7.5-1.5V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M19.5 5.2c-2.8-.8-5.3-.2-7.5 1.5v12.1c2.2-1.7 4.7-2.3 7.5-1.5V5.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M7.4 9.1c1.1-.1 2 .1 2.8.5M7.4 12.2c1.1-.1 2 .1 2.8.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <span class="tool-label">图鉴</span>
+      </button>
+      <span class="tool-sep" aria-hidden="true"></span>
       <button class="tool" id="feedback-toggle" type="button" aria-expanded="false" title="意见反馈">
         <svg class="tool-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M20 11.3c0 3.5-3.6 6.4-8 6.4-1 0-1.9-.1-2.8-.4L5 19l1.2-3.2C4.8 14.6 4 13 4 11.3 4 7.8 7.6 4.9 12 4.9s8 2.9 8 6.4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
@@ -122,6 +131,7 @@
       <div class="fishing-copy">
         <p class="fishing-kicker">溪畔垂钓 · FISHING</p>
         <p class="fishing-status" id="fishing-status" aria-live="polite">点击「抛竿」，静候鱼儿咬钩</p>
+        <p class="daily-strip" id="daily-strip">今日目标 · 连接服务器后显示</p>
       </div>
       <button class="cast-button" id="cast-button" type="button">
         <svg class="cast-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -160,6 +170,19 @@
         </div>
       </div>
 
+      <section class="daily-card" id="daily-card" aria-live="polite">
+        <div class="daily-card-head">
+          <span>今日目标</span>
+          <span class="daily-weather" id="daily-weather">—</span>
+        </div>
+        <div class="daily-target-row">
+          <strong id="daily-target">连接服务器后显示</strong>
+          <span id="daily-progress">0 / 0</span>
+        </div>
+        <div class="daily-bar" aria-hidden="true"><i id="daily-bar-fill"></i></div>
+        <p class="daily-meta" id="daily-meta">连续钓鱼 0 天 · 完成今日目标可延续</p>
+      </section>
+
       <form class="memory-form" id="memory-form">
         <label for="memory-name">钓客称呼 · 不可重名</label>
         <div class="memory-name-row">
@@ -196,7 +219,7 @@
         </button>
       </header>
 
-      <p class="leaderboard-intro">全站钓客最近 30 天的渔获数量排行。</p>
+      <p class="leaderboard-intro">娱乐榜单：按玩家上报的最近 30 天渔获数量排序，数据仅供参考。</p>
       <div class="memory-board">
         <div class="memory-board-head">
           <h3>全站渔获榜</h3>
@@ -207,6 +230,30 @@
         </ol>
       </div>
       <p class="memory-note">排行榜与背包分开统计，数据每 30 天滚动更新。</p>
+    </section>
+
+    <section class="memory-panel encyclopedia-panel" id="encyclopedia-panel" role="dialog" aria-modal="true" aria-labelledby="encyclopedia-title" aria-hidden="true">
+      <header class="memory-header">
+        <div>
+          <p class="memory-kicker">FIELD GUIDE · 鱼种图鉴</p>
+          <h2 id="encyclopedia-title">溪流图鉴</h2>
+        </div>
+        <button class="memory-close" id="encyclopedia-close" type="button" aria-label="关闭图鉴">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </header>
+
+      <div class="encyclopedia-best" id="encyclopedia-best">
+        <span>个人最佳</span>
+        <strong>还没有渔获</strong>
+      </div>
+      <p class="encyclopedia-intro">钓到过的鱼会点亮图鉴。稀有鱼只在特定时段或天气出现。</p>
+      <div class="encyclopedia-grid" id="encyclopedia-grid">
+        <div class="memory-empty">正在读取图鉴…</div>
+      </div>
+      <p class="memory-note">图鉴按服务器保留的渔获统计；鱼种、长度和时间都来自你的匿名背包。</p>
     </section>
 
     <section class="memory-panel contact-panel" id="contact-panel" role="dialog" aria-modal="true" aria-labelledby="contact-title" aria-hidden="true">
@@ -271,6 +318,7 @@
       </ul>
       <p class="contact-status" id="contact-status">GitHub / 邮箱点击打开，QQ / 微信点击复制。</p>
       <p class="memory-note">微信与 QQ 同号；手机号暂未公开，填写后即可点击复制。</p>
+      <p class="memory-note contact-privacy"><a href="/privacy.html">隐私说明</a>：了解匿名数据、IP 和保留期限。</p>
     </section>
 
     <section class="memory-panel feedback-panel" id="feedback-panel" role="dialog" aria-modal="true" aria-labelledby="feedback-title" aria-hidden="true">

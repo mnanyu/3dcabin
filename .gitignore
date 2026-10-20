@@ -1,0 +1,26 @@
+# private
+后台管理信息.md
+森林小屋-后台管理信息.md
+server-api/admin.env
+server-api/data/
+*.db
+*.db-wal
+*.db-shm
+
+# local build / test
+node_modules/
+.npm-cache/
+.build/
+.deploy/
+.test/
+.test-api/
+__pycache__/
+*.pyc
+
+# logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# 后台界面不公开
+admin/

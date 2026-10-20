@@ -103,6 +103,8 @@ function terrainHeight(x, z) {
 
 const canvas = document.querySelector('#scene');
 const IS_SMALL_SCREEN = Boolean(window.matchMedia && window.matchMedia('(max-width: 760px)').matches);
+const TOUCH_INPUT = Boolean(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+const BITE_WINDOW = TOUCH_INPUT ? 2.35 : 1.85;
 const PIXEL_RATIO_CAP = IS_SMALL_SCREEN ? 1.5 : 2;
 let renderer;
 try {
@@ -2432,6 +2434,28 @@ const FISH_TABLE = [
   { name: '山女鳟', min: 18, max: 30 },
 ];
 
+const RARE_FISH_TABLE = [
+  { name: '月影鳟', min: 45, max: 70, period: '夜', rare: true },
+  { name: '晨雾鱼', min: 22, max: 38, period: '晨', weather: '雾', rare: true },
+  { name: '赤金鲤', min: 40, max: 65, period: '昏', weather: '晴', rare: true },
+  { name: '雨鳞鱼', min: 16, max: 30, weather: '雨', rare: true },
+];
+
+function chooseFishingFish() {
+  const conditions = memory.daily && memory.daily.conditions ? memory.daily.conditions : null;
+  if (conditions) {
+    const rare = RARE_FISH_TABLE.filter((fish) => {
+      if (fish.period && fish.period !== conditions.period) return false;
+      if (fish.weather && fish.weather !== conditions.weather) return false;
+      return true;
+    });
+    if (rare.length && Math.random() < 0.1) {
+      return rare[Math.floor(Math.random() * rare.length)];
+    }
+  }
+  return FISH_TABLE[Math.floor(Math.random() * FISH_TABLE.length)];
+}
+
 function chooseCastTarget() {
   const angle = Math.PI + (Math.random() - 0.5) * 1.15;
   const distance = 0.5 + Math.random() * 2.15;
@@ -2457,7 +2481,7 @@ function startFishingCast() {
 
 function landFishingCatch() {
   if (fishing.state !== 'bite') return;
-  const fish = FISH_TABLE[Math.floor(Math.random() * FISH_TABLE.length)];
+  const fish = chooseFishingFish();
   const length = Math.floor(fish.min + Math.random() * (fish.max - fish.min + 1));
   fishing.state = 'caught';
   fishing.caughtElapsed = 0;
@@ -2513,7 +2537,7 @@ function updateFishing(dt, time) {
     bobberWorld.copy(fishing.target);
     bobberWorld.y = POND.waterY + 0.01 + Math.sin(time * 19) * 0.026;
     fishing.castSwing = 0;
-    if (fishing.biteElapsed >= 1.85) {
+    if (fishing.biteElapsed >= BITE_WINDOW) {
       fishing.state = 'missed';
       fishing.failedElapsed = 0;
       fishing.fish = null;
@@ -2819,6 +2843,14 @@ const ui = {
   triCount: document.querySelector('#tri-count'),
   fishingHud: document.querySelector('#fishing-hud'),
   fishingStatus: document.querySelector('#fishing-status'),
+  dailyStrip: document.querySelector('#daily-strip'),
+  dailyCard: document.querySelector('#daily-card'),
+  dailyWeather: document.querySelector('#daily-weather'),
+  dailyTarget: document.querySelector('#daily-target'),
+  dailyProgress: document.querySelector('#daily-progress'),
+  dailyBarFill: document.querySelector('#daily-bar-fill'),
+  dailyMeta: document.querySelector('#daily-meta'),
+  weatherFx: document.querySelector('#weather-fx'),
   castButton: document.querySelector('#cast-button'),
   castLabel: document.querySelector('#cast-label'),
   catchCount: document.querySelector('#catch-count'),
@@ -2840,6 +2872,11 @@ const ui = {
   leaderboardToggle: document.querySelector('#leaderboard-toggle'),
   leaderboardPanel: document.querySelector('#leaderboard-panel'),
   leaderboardClose: document.querySelector('#leaderboard-close'),
+  encyclopediaToggle: document.querySelector('#encyclopedia-toggle'),
+  encyclopediaPanel: document.querySelector('#encyclopedia-panel'),
+  encyclopediaClose: document.querySelector('#encyclopedia-close'),
+  encyclopediaGrid: document.querySelector('#encyclopedia-grid'),
+  encyclopediaBest: document.querySelector('#encyclopedia-best'),
   contactToggle: document.querySelector('#contact-toggle'),
   contactPanel: document.querySelector('#contact-panel'),
   contactClose: document.querySelector('#contact-close'),
@@ -2922,6 +2959,9 @@ const memory = {
   backpack: [],
   species: [],
   leaderboard: [],
+  daily: null,
+  encyclopedia: [],
+  personalBest: null,
   online: false,
   loading: false,
   windowDays: 30,
@@ -3106,6 +3146,92 @@ function renderMemoryLeaderboard() {
   });
 }
 
+function escapeGuide(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+  });
+}
+
+function applyWeather(weather) {
+  if (ui.weatherFx) {
+    ui.weatherFx.classList.toggle('is-rain', weather === '雨');
+    ui.weatherFx.classList.toggle('is-fog', weather === '雾');
+  }
+  document.body.dataset.weather = weather || '';
+}
+
+function renderDailyQuest() {
+  var daily = memory.daily;
+  if (!daily) {
+    if (ui.dailyStrip) ui.dailyStrip.textContent = '今日目标 · 连接服务器后显示';
+    if (ui.dailyTarget) ui.dailyTarget.textContent = '连接服务器后显示';
+    if (ui.dailyProgress) ui.dailyProgress.textContent = '0 / 0';
+    if (ui.dailyBarFill) ui.dailyBarFill.style.width = '0%';
+    if (ui.dailyMeta) ui.dailyMeta.textContent = '连续钓鱼 0 天 · 完成今日目标可延续';
+    if (ui.dailyWeather) ui.dailyWeather.textContent = '—';
+    if (ui.dailyCard) ui.dailyCard.classList.remove('completed');
+    applyWeather(null);
+    return;
+  }
+  var conditions = daily.conditions && typeof daily.conditions === 'object' ? daily.conditions : {};
+  var species = String(daily.targetSpecies || '');
+  var total = Math.max(1, Number(daily.targetCount) || 1);
+  var progress = Math.max(0, Math.min(total, Number(daily.progress) || 0));
+  var completed = Boolean(daily.completed);
+  var streak = Math.max(0, Number(daily.streak) || 0);
+  var bestStreak = Math.max(0, Number(daily.bestStreak) || 0);
+  var period = String(conditions.period || '');
+  var weather = String(conditions.weather || '');
+  var rare = Array.isArray(conditions.rare) ? conditions.rare : [];
+  var weatherText = [period, weather].filter(Boolean).join(' · ');
+  var rareText = rare.length ? ' · 鱼讯 ' + rare.join(' / ') : '';
+  if (ui.dailyStrip) {
+    ui.dailyStrip.textContent = completed
+      ? '今日目标完成 · 连续 ' + streak + ' 天'
+      : '今日 ' + species + ' ' + progress + '/' + total + ' · 连续 ' + streak + ' 天';
+  }
+  if (ui.dailyTarget) ui.dailyTarget.textContent = completed ? '今日已完成' : '钓 ' + total + ' 条 ' + species;
+  if (ui.dailyProgress) ui.dailyProgress.textContent = progress + ' / ' + total;
+  if (ui.dailyBarFill) ui.dailyBarFill.style.width = Math.round((progress / total) * 100) + '%';
+  if (ui.dailyMeta) {
+    ui.dailyMeta.textContent = '连续 ' + streak + ' 天 · 最佳 ' + bestStreak + ' 天' + (weatherText ? ' · ' + weatherText : '') + rareText;
+  }
+  if (ui.dailyWeather) ui.dailyWeather.textContent = weatherText || '—';
+  if (ui.dailyCard) ui.dailyCard.classList.toggle('completed', completed);
+  applyWeather(weather);
+}
+
+function renderEncyclopedia() {
+  if (!ui.encyclopediaGrid) return;
+  var list = Array.isArray(memory.encyclopedia) ? memory.encyclopedia : [];
+  if (!list.length) {
+    ui.encyclopediaGrid.innerHTML = '<div class="memory-empty">连接服务器后读取图鉴</div>';
+  } else {
+    var html = '';
+    list.forEach(function (item) {
+      var caught = Boolean(item.caught);
+      var rare = Boolean(item.rare);
+      var classes = 'fish-card' + (caught ? ' caught' : ' locked') + (rare ? ' rare' : '');
+      var glyph = caught ? Array.from(String(item.name || '鱼'))[0] : '?';
+      var record = caught ? String(item.bestLength || 0) + ' cm · ' + String(item.count || 0) + ' 条' : '尚未发现';
+      html += '<article class="' + classes + '">' +
+        (rare ? '<span class="fish-rare-tag">RARE</span>' : '') +
+        '<span class="fish-glyph">' + escapeGuide(glyph) + '</span>' +
+        '<strong>' + escapeGuide(item.name) + '</strong>' +
+        '<span class="fish-record">' + escapeGuide(record) + '</span>' +
+        '<small>' + (caught ? '个人最佳' : '继续探索溪流') + '</small>' +
+        '</article>';
+    });
+    ui.encyclopediaGrid.innerHTML = html;
+  }
+  if (ui.encyclopediaBest) {
+    var best = memory.personalBest;
+    ui.encyclopediaBest.innerHTML = best
+      ? '<span>个人最佳</span><strong>' + escapeGuide(best.species) + ' · ' + String(best.length || 0) + ' cm</strong>'
+      : '<span>个人最佳</span><strong>还没有渔获</strong>';
+  }
+}
+
 function renderMemoryPanel() {
   if (ui.memoryName && document.activeElement !== ui.memoryName) {
     ui.memoryName.value = memory.name;
@@ -3120,6 +3246,8 @@ function renderMemoryPanel() {
   renderBackpackList();
   renderSpeciesChips();
   renderMemoryLeaderboard();
+  renderDailyQuest();
+  renderEncyclopedia();
 }
 
 function applyBackpackState(data) {
@@ -3133,6 +3261,9 @@ function applyBackpackState(data) {
   memory.backpack = Array.isArray(data.backpack) ? data.backpack : [];
   memory.species = Array.isArray(data.species) ? data.species : [];
   memory.leaderboard = Array.isArray(data.leaderboard) ? data.leaderboard : [];
+  memory.daily = data.daily && typeof data.daily === 'object' ? data.daily : null;
+  memory.encyclopedia = Array.isArray(data.encyclopedia) ? data.encyclopedia : [];
+  memory.personalBest = data.personalBest && typeof data.personalBest === 'object' ? data.personalBest : null;
   renderMemoryPanel();
 }
 
@@ -3229,6 +3360,7 @@ let feedbackSending = false;
 const PANEL_TARGETS = {
   backpack: { panel: ui.memoryPanel, toggle: ui.memoryToggle },
   leaderboard: { panel: ui.leaderboardPanel, toggle: ui.leaderboardToggle },
+  encyclopedia: { panel: ui.encyclopediaPanel, toggle: ui.encyclopediaToggle },
   contact: { panel: ui.contactPanel, toggle: ui.contactToggle },
   feedback: { panel: ui.feedbackPanel, toggle: ui.feedbackToggle },
 };
@@ -3265,7 +3397,7 @@ function openPanel(kind) {
   setPanelVisual(kind, true);
   if (ui.memoryBackdrop) ui.memoryBackdrop.classList.add('is-open');
   controls.enabled = false;
-  if (kind === 'backpack' || kind === 'leaderboard') {
+  if (kind === 'backpack' || kind === 'leaderboard' || kind === 'encyclopedia') {
     renderMemoryPanel();
     syncMemory();
   }
@@ -3378,10 +3510,12 @@ function copyContactValue(value) {
 
 if (ui.memoryToggle) ui.memoryToggle.addEventListener('click', () => openPanel('backpack'));
 if (ui.leaderboardToggle) ui.leaderboardToggle.addEventListener('click', () => openPanel('leaderboard'));
+if (ui.encyclopediaToggle) ui.encyclopediaToggle.addEventListener('click', () => openPanel('encyclopedia'));
 if (ui.contactToggle) ui.contactToggle.addEventListener('click', () => openPanel('contact'));
 if (ui.feedbackToggle) ui.feedbackToggle.addEventListener('click', () => openPanel('feedback'));
 if (ui.memoryClose) ui.memoryClose.addEventListener('click', closePanels);
 if (ui.leaderboardClose) ui.leaderboardClose.addEventListener('click', closePanels);
+if (ui.encyclopediaClose) ui.encyclopediaClose.addEventListener('click', closePanels);
 if (ui.contactClose) ui.contactClose.addEventListener('click', closePanels);
 if (ui.feedbackClose) ui.feedbackClose.addEventListener('click', closePanels);
 if (ui.memoryBackdrop) ui.memoryBackdrop.addEventListener('click', closePanels);
@@ -3590,6 +3724,7 @@ const SHOT_MODE = new URLSearchParams(window.location.search).has('shot');
 
 function animate() {
   requestAnimationFrame(animate);
+  if (document.hidden) return;
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
   state.time = t;

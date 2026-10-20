@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index,follow">
+<title>隐私说明 · 林间小屋</title>
+<style>
+  :root { color-scheme: dark; --bg:#0a100f; --text:#efe6d7; --muted:rgba(239,230,215,.55); --line:rgba(239,230,215,.12); --amber:#d9a363; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:radial-gradient(circle at 75% 0%,rgba(217,163,99,.08),transparent 32%),var(--bg); color:var(--text); font:400 14px/1.85 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  main { width:min(780px,calc(100% - 32px)); margin:0 auto; padding:54px 0 80px; }
+  a { color:var(--amber); }
+  .back { display:inline-block; margin-bottom:34px; color:var(--muted); text-decoration:none; font-size:12px; letter-spacing:.06em; }
+  .back:hover { color:var(--amber); }
+  .eyebrow { margin:0 0 10px; color:var(--amber); font-size:10px; letter-spacing:.22em; }
+  h1 { margin:0 0 8px; font:400 38px/1.2 "Songti SC","Noto Serif SC",Georgia,serif; }
+  .updated { margin:0 0 34px; color:var(--muted); font-size:11px; }
+  h2 { margin:32px 0 10px; font:400 20px/1.4 "Songti SC","Noto Serif SC",Georgia,serif; }
+  p, li { color:rgba(239,230,215,.74); }
+  ul { padding-left:20px; }
+  .card { margin:22px 0; padding:16px 18px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.018); }
+  .card p { margin:0; }
+  hr { border:0; border-top:1px solid var(--line); margin:34px 0; }
+  footer { margin-top:40px; color:var(--muted); font-size:11px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">← 返回林间小屋</a>
+  <p class="eyebrow">PRIVACY · 隐私说明</p>
+  <h1>这座小屋收集什么</h1>
+  <p class="updated">最后更新：2026-10-20</p>
+
+  <p>林间小屋是一个匿名钓鱼小站。不需要注册，不收集真实姓名，也没有广告追踪。下面说明服务器会保存哪些数据、为什么保存、保存多久。</p>
+
+  <h2>1. 收集的数据</h2>
+  <ul>
+    <li><strong>匿名浏览器 ID</strong>：服务器写入一个 HttpOnly Cookie，用来区分不同浏览器，记住你的背包。</li>
+    <li><strong>钓客称呼</strong>：你自己填写的昵称，可以不填。</li>
+    <li><strong>渔获记录</strong>：鱼种、长度、时间，用来显示背包、榜单和图鉴。</li>
+    <li><strong>每日目标与连续天数</strong>：目标鱼、目标数量、进度和连续完成天数，用来显示每日玩法。</li>
+    <li><strong>最近 IP</strong>：用于后台安全、统计和 IP 地理位置解析。</li>
+    <li><strong>IP 地理位置</strong>：国家/地区/城市/运营商，由第三方 IP 库解析，精度到城市，不保证准确。</li>
+    <li><strong>反馈</strong>：你主动提交的反馈内容、可选联系方式、页面地址和提交 IP。</li>
+    <li><strong>服务器访问日志</strong>：Nginx/系统日志会记录 IP、时间、路径和状态码，用于安全和故障排查。</li>
+  </ul>
+
+  <h2>2. 用途</h2>
+  <ul>
+    <li>记住同一个浏览器，显示你的背包和称呼</li>
+    <li>生成娱乐性质的渔获榜单和图鉴</li>
+    <li>记录每日目标进度和连续钓鱼天数</li>
+    <li>防止刷接口和滥用后台</li>
+    <li>接收并回复你的反馈</li>
+  </ul>
+
+  <h2>3. 保留期限</h2>
+  <ul>
+    <li>有渔获的用户：渔获和用户记录保留 6 个月（按最近渔获滚动）</li>
+    <li>有称呼但无渔获：保留 3 个月（按最近活跃滚动）</li>
+    <li>无称呼且无渔获：保留 1 个月（按最近活跃滚动）</li>
+    <li>IP 地理缓存：90 天</li>
+    <li>反馈和后台审计日志：180 天</li>
+  </ul>
+  <p>公开背包和榜单展示最近 30 天；数据库保留期限可能更长。过期数据会由定时任务清理。</p>
+
+  <h2>4. 第三方</h2>
+  <ul>
+    <li><strong>ip-api.com / ipinfo.io</strong>：用最近 IP 解析城市级地理位置。</li>
+    <li><strong>FormSubmit</strong>：把反馈内容转发到站长邮箱。</li>
+    <li><strong>Cloudflare</strong>：站点接入 Cloudflare 后，流量会经过 Cloudflare 的边缘网络。</li>
+  </ul>
+  <p>这些服务会看到完成对应功能所必需的信息。本站不出售数据，也没有广告追踪。</p>
+
+  <h2>5. Cookie</h2>
+  <p>本站只使用必要的匿名身份 Cookie 和后台登录 Cookie，不使用广告 Cookie。清除浏览器 Cookie 后，服务器会把你当作新的匿名访客。</p>
+
+  <h2>6. 删除数据</h2>
+  <p>你可以发邮件到 <a href="mailto:you@example.com">you@example.com</a>，说明要删除的浏览器/称呼和大概访问时间。站长也可以在后台删除对应用户及其渔获。删除后无法恢复。</p>
+
+  <div class="card">
+    <p>如果只是不想被记录 IP，可以在浏览器或网络层使用代理/VPN；但这会影响 GeoIP 的准确性，也可能影响后台安全判断。</p>
+  </div>
+
+  <hr>
+  <footer>林间小屋 · 匿名钓鱼数据说明</footer>
+</main>
+</body>
+</html>
