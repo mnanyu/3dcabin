@@ -2877,6 +2877,10 @@ const ui = {
   encyclopediaClose: document.querySelector('#encyclopedia-close'),
   encyclopediaGrid: document.querySelector('#encyclopedia-grid'),
   encyclopediaBest: document.querySelector('#encyclopedia-best'),
+  announcementToggle: document.querySelector('#announcement-toggle'),
+  announcementPanel: document.querySelector('#announcement-panel'),
+  announcementClose: document.querySelector('#announcement-close'),
+  announcementList: document.querySelector('#announcement-list'),
   contactToggle: document.querySelector('#contact-toggle'),
   contactPanel: document.querySelector('#contact-panel'),
   contactClose: document.querySelector('#contact-close'),
@@ -3361,6 +3365,7 @@ const PANEL_TARGETS = {
   backpack: { panel: ui.memoryPanel, toggle: ui.memoryToggle },
   leaderboard: { panel: ui.leaderboardPanel, toggle: ui.leaderboardToggle },
   encyclopedia: { panel: ui.encyclopediaPanel, toggle: ui.encyclopediaToggle },
+  announcement: { panel: ui.announcementPanel, toggle: ui.announcementToggle },
   contact: { panel: ui.contactPanel, toggle: ui.contactToggle },
   feedback: { panel: ui.feedbackPanel, toggle: ui.feedbackToggle },
 };
@@ -3401,6 +3406,7 @@ function openPanel(kind) {
     renderMemoryPanel();
     syncMemory();
   }
+  if (kind === 'announcement') loadAnnouncements();
   if (kind === 'feedback') setFeedbackStatus('', '');
 }
 
@@ -3416,6 +3422,39 @@ function setFeedbackStatus(message, type) {
   if (!ui.feedbackStatus) return;
   ui.feedbackStatus.textContent = message || '';
   ui.feedbackStatus.className = 'feedback-status' + (type ? ' is-' + type : '');
+}
+
+async function loadAnnouncements() {
+  if (!ui.announcementList) return;
+  ui.announcementList.innerHTML = '<div class="memory-empty">正在读取公告…</div>';
+  try {
+    const response = await fetch('/announcements.json?v=' + Date.now(), { cache: 'no-store' });
+    if (!response.ok) throw new Error('announcement fetch failed');
+    const data = await response.json();
+    const items = Array.isArray(data.announcements) ? data.announcements : [];
+    if (!items.length) {
+      ui.announcementList.innerHTML = '<div class="announcement-empty">暂时还没有公告。<br>新的公告会先经过站长确认，再出现在这里。</div>';
+      return;
+    }
+    ui.announcementList.innerHTML = '';
+    items.forEach((item) => {
+      const article = document.createElement('article');
+      article.className = 'announcement-item';
+      const head = document.createElement('div');
+      head.className = 'announcement-item-head';
+      const title = document.createElement('h3');
+      title.textContent = String(item.title || '林间公告');
+      const time = document.createElement('time');
+      time.textContent = String(item.date || '');
+      head.append(title, time);
+      const body = document.createElement('p');
+      body.textContent = String(item.body || '');
+      article.append(head, body);
+      ui.announcementList.appendChild(article);
+    });
+  } catch {
+    ui.announcementList.innerHTML = '<div class="announcement-empty">公告加载失败，请稍后再试。</div>';
+  }
 }
 
 async function submitFeedback(event) {
@@ -3511,11 +3550,13 @@ function copyContactValue(value) {
 if (ui.memoryToggle) ui.memoryToggle.addEventListener('click', () => openPanel('backpack'));
 if (ui.leaderboardToggle) ui.leaderboardToggle.addEventListener('click', () => openPanel('leaderboard'));
 if (ui.encyclopediaToggle) ui.encyclopediaToggle.addEventListener('click', () => openPanel('encyclopedia'));
+if (ui.announcementToggle) ui.announcementToggle.addEventListener('click', () => openPanel('announcement'));
 if (ui.contactToggle) ui.contactToggle.addEventListener('click', () => openPanel('contact'));
 if (ui.feedbackToggle) ui.feedbackToggle.addEventListener('click', () => openPanel('feedback'));
 if (ui.memoryClose) ui.memoryClose.addEventListener('click', closePanels);
 if (ui.leaderboardClose) ui.leaderboardClose.addEventListener('click', closePanels);
 if (ui.encyclopediaClose) ui.encyclopediaClose.addEventListener('click', closePanels);
+if (ui.announcementClose) ui.announcementClose.addEventListener('click', closePanels);
 if (ui.contactClose) ui.contactClose.addEventListener('click', closePanels);
 if (ui.feedbackClose) ui.feedbackClose.addEventListener('click', closePanels);
 if (ui.memoryBackdrop) ui.memoryBackdrop.addEventListener('click', closePanels);

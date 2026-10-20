@@ -956,3 +956,28 @@ h1 {
   .daily-strip { max-width: 150px !important; }
   .encyclopedia-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+
+/* Announcement panel */
+.announcement-list { display: flex; flex-direction: column; gap: 10px; }
+.announcement-item {
+  padding: 13px 14px;
+  border: 1px solid rgba(217, 163, 99, 0.2);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(217, 163, 99, 0.07), rgba(255, 255, 255, 0.014));
+}
+.announcement-item-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.announcement-item h3 { margin: 0; color: rgba(246, 238, 224, 0.94); font: 400 16px/1.35 var(--serif); }
+.announcement-item time { flex: none; color: rgba(217, 163, 99, 0.66); font: 400 8.5px/1.2 var(--sans); letter-spacing: 0.06em; }
+.announcement-item p { margin: 7px 0 0; color: rgba(239, 230, 215, 0.66); font: 400 11px/1.75 var(--sans); white-space: pre-line; }
+.announcement-empty { padding: 22px 10px; text-align: center; color: rgba(239, 230, 215, 0.42); font: 400 10px/1.7 var(--sans); }
+
+@media (max-width: 980px) {
+  .toolbar { gap: 1px; }
+  .toolbar .tool { width: 32px; }
+}
+@media (max-width: 760px) {
+  .toolbar { right: 50%; transform: translateX(50%); gap: 1px; padding: 4px; }
+  .toolbar .tool { width: 31px; height: 32px; }
+  .announcement-grid { grid-template-columns: 1fr; }
+}
