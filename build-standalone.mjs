@@ -13,9 +13,9 @@ const js = fs.readFileSync(bundlePath, 'utf8').replace(/<\/script/gi, '<\\/scrip
 const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
-html = html.replace('<link rel="stylesheet" href="./style.css" />', '<style>\n' + css + '\n</style>');
+html = html.replace('<link rel="stylesheet" href="./style.css" />', () => '<style>\n' + css + '\n</style>');
 html = html.replace(/\s*<script type="importmap">[\s\S]*?<\/script>/, '');
-html = html.replace('  <script type="module" src="./main.js"></script>', '  <script>\n' + js + '\n</script>');
+html = html.replace('  <script type="module" src="./main.js"></script>', () => '  <script>\n' + js + '\n</script>');
 html = html.replace('<title>林间小屋 · 程序化 3D 森林</title>', '<title>林间小屋 · 单文件 3D 森林</title>');
 
 const out = path.join(root, '林间小屋-单文件版.html');
