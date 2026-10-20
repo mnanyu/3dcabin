@@ -17,6 +17,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
@@ -26,6 +27,25 @@ HOST = "127.0.0.1"
 PORT = 8765
 WINDOW_SECONDS = 30 * 24 * 60 * 60
 CATCH_RETENTION_SECONDS = 180 * 24 * 60 * 60
+FISHING_TZ = timezone(timedelta(hours=8))
+BASE_FISH_LIMITS = {
+    "虹鳟": (24, 42),
+    "鲫鱼": (13, 24),
+    "溪哥": (9, 16),
+    "鲤鱼": (32, 56),
+    "山女鳟": (18, 30),
+}
+RARE_FISH_RULES = {
+    "月影鳟": {"period": "夜", "min": 45, "max": 70},
+    "晨雾鱼": {"period": "晨", "weather": "雾", "min": 22, "max": 38},
+    "赤金鲤": {"period": "昏", "weather": "晴", "min": 40, "max": 65},
+    "雨鳞鱼": {"weather": "雨", "min": 16, "max": 30},
+}
+RARE_FISH_LIMITS = {name: (rule["min"], rule["max"]) for name, rule in RARE_FISH_RULES.items()}
+FISH_LIMITS = {**BASE_FISH_LIMITS, **RARE_FISH_LIMITS}
+DAILY_SPECIES = list(BASE_FISH_LIMITS.keys())
+CATCH_RATE_PER_MINUTE = 8
+CATCH_RATE_PER_DAY = 120
 NAMED_RETENTION_SECONDS = 90 * 24 * 60 * 60
 ANON_RETENTION_SECONDS = 30 * 24 * 60 * 60
 COOKIE_NAME = "cabin_uid"
@@ -45,6 +65,9 @@ ADMIN_SALT = os.environ.get("ADMIN_SALT", "")
 ADMIN_HASH = os.environ.get("ADMIN_HASH", "")
 GEO_CACHE_SECONDS = 7 * 24 * 60 * 60
 GEO_FAIL_SECONDS = 60 * 60
+GEO_RETENTION_SECONDS = 90 * 24 * 60 * 60
+FEEDBACK_RETENTION_SECONDS = 180 * 24 * 60 * 60
+AUDIT_RETENTION_SECONDS = 180 * 24 * 60 * 60
 FEEDBACK_TO = os.environ.get("FEEDBACK_TO", "you@example.com")
 FEEDBACK_RELAY_URL = "https://formsubmit.co/ajax/" + quote(FEEDBACK_TO, safe="@")
 FEEDBACK_SITE = os.environ.get("FEEDBACK_SITE", "https://rmqiu.top")
@@ -57,7 +80,7 @@ _feedback_lock = threading.Lock()
 
 _cleanup_lock = threading.Lock()
 _last_cleanup = 0.0
-_admin_sessions: dict[str, int] = {}
+_admin_sessions: dict[str, dict] = {}
 _admin_lock = threading.Lock()
 _admin_failures: dict[str, list[float]] = {}
 _admin_failure_lock = threading.Lock()
@@ -113,6 +136,7 @@ def init_db() -> None:
             );
             CREATE TABLE IF NOT EXISTS feedback (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT NOT NULL DEFAULT '',
                 message TEXT NOT NULL,
                 contact TEXT NOT NULL DEFAULT '',
                 page TEXT NOT NULL DEFAULT '',
@@ -121,6 +145,35 @@ def init_db() -> None:
                 email_status TEXT NOT NULL DEFAULT 'pending',
                 email_error TEXT NOT NULL DEFAULT ''
             );
+            CREATE TABLE IF NOT EXISTS admin_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                target TEXT NOT NULL DEFAULT '',
+                ip TEXT NOT NULL DEFAULT '',
+                detail TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS daily_quests (
+                uid TEXT NOT NULL,
+                quest_date TEXT NOT NULL,
+                target_species TEXT NOT NULL,
+                target_count INTEGER NOT NULL,
+                progress INTEGER NOT NULL DEFAULT 0,
+                completed INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                PRIMARY KEY(uid, quest_date)
+            );
+            CREATE TABLE IF NOT EXISTS daily_streaks (
+                uid TEXT PRIMARY KEY,
+                current_streak INTEGER NOT NULL DEFAULT 0,
+                best_streak INTEGER NOT NULL DEFAULT 0,
+                last_completed_date TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         columns = [row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()]
@@ -128,9 +181,18 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN last_seen INTEGER NOT NULL DEFAULT 0")
         if "last_ip" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN last_ip TEXT NOT NULL DEFAULT ''")
+        feedback_columns = [row[1] for row in conn.execute("PRAGMA table_info(feedback)").fetchall()]
+        if "uid" not in feedback_columns:
+            conn.execute("ALTER TABLE feedback ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name_unique "
             "ON users(name COLLATE NOCASE) WHERE name <> ''"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '2026-10-20.2')"
+        )
+        conn.execute(
+            "UPDATE meta SET value = '2026-10-20.2' WHERE key = 'schema_version' AND value <> '2026-10-20.2'"
         )
         conn.commit()
     finally:
@@ -149,6 +211,12 @@ def cleanup(conn: sqlite3.Connection, force: bool = False) -> None:
         named_cutoff = now - NAMED_RETENTION_SECONDS
         anon_cutoff = now - ANON_RETENTION_SECONDS
         conn.execute("DELETE FROM catches WHERE caught_at < ?", (catch_cutoff,))
+        geo_cutoff = now - GEO_RETENTION_SECONDS
+        feedback_cutoff = now - FEEDBACK_RETENTION_SECONDS
+        audit_cutoff = now - AUDIT_RETENTION_SECONDS
+        conn.execute("DELETE FROM ip_geo WHERE updated_at < ?", (geo_cutoff,))
+        conn.execute("DELETE FROM feedback WHERE created_at < ?", (feedback_cutoff,))
+        conn.execute("DELETE FROM admin_audit WHERE created_at < ?", (audit_cutoff,))
         conn.execute(
             """
             DELETE FROM users
@@ -160,6 +228,8 @@ def cleanup(conn: sqlite3.Connection, force: bool = False) -> None:
             """,
             (named_cutoff, anon_cutoff),
         )
+        conn.execute("DELETE FROM daily_quests WHERE uid NOT IN (SELECT uid FROM users)")
+        conn.execute("DELETE FROM daily_streaks WHERE uid NOT IN (SELECT uid FROM users)")
         conn.commit()
         _last_cleanup = now
 
@@ -343,6 +413,179 @@ def _geo_worker(ip: str) -> None:
             _geo_inflight.discard(ip)
 
 
+def fishing_now() -> datetime:
+    return datetime.now(FISHING_TZ)
+
+
+def get_fishing_conditions(now: datetime | None = None) -> dict:
+    moment = now or fishing_now()
+    hour = moment.hour
+    if 5 <= hour < 8:
+        period = "晨"
+    elif 8 <= hour < 17:
+        period = "日"
+    elif 17 <= hour < 20:
+        period = "昏"
+    else:
+        period = "夜"
+    weather = ("晴", "雨", "雾")[moment.date().toordinal() % 3]
+    conditions = {"period": period, "weather": weather, "date": moment.date().isoformat()}
+    conditions["rare"] = [
+        name
+        for name, rule in RARE_FISH_RULES.items()
+        if ("period" not in rule or rule["period"] == period)
+        and ("weather" not in rule or rule["weather"] == weather)
+    ]
+    return conditions
+
+
+def species_allowed(species: str, conditions: dict) -> bool:
+    if species in BASE_FISH_LIMITS:
+        return True
+    rule = RARE_FISH_RULES.get(species)
+    if not rule:
+        return False
+    if "period" in rule and rule["period"] != conditions.get("period"):
+        return False
+    if "weather" in rule and rule["weather"] != conditions.get("weather"):
+        return False
+    return True
+
+
+def ensure_daily_quest(conn: sqlite3.Connection, uid: str) -> sqlite3.Row:
+    day = fishing_now().date().isoformat()
+    row = conn.execute(
+        "SELECT uid, quest_date, target_species, target_count, progress, completed FROM daily_quests WHERE uid = ? AND quest_date = ?",
+        (uid, day),
+    ).fetchone()
+    if row:
+        return row
+    species = secrets.choice(DAILY_SPECIES)
+    count = secrets.randbelow(3) + 1
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO daily_quests(uid, quest_date, target_species, target_count, progress, completed, created_at)
+        VALUES(?, ?, ?, ?, 0, 0, ?)
+        """,
+        (uid, day, species, count, now_ts()),
+    )
+    conn.commit()
+    return conn.execute(
+        "SELECT uid, quest_date, target_species, target_count, progress, completed FROM daily_quests WHERE uid = ? AND quest_date = ?",
+        (uid, day),
+    ).fetchone()
+
+
+def daily_payload(conn: sqlite3.Connection, uid: str) -> dict:
+    row = ensure_daily_quest(conn, uid)
+    today = fishing_now().date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    streak = conn.execute(
+        "SELECT current_streak, best_streak, last_completed_date FROM daily_streaks WHERE uid = ?",
+        (uid,),
+    ).fetchone()
+    current = 0
+    best = 0
+    if streak:
+        best = int(streak["best_streak"] or 0)
+        last = str(streak["last_completed_date"] or "")
+        if last in (today.isoformat(), yesterday):
+            current = int(streak["current_streak"] or 0)
+    conditions = get_fishing_conditions()
+    return {
+        "date": today.isoformat(),
+        "targetSpecies": row["target_species"],
+        "targetCount": int(row["target_count"]),
+        "progress": min(int(row["progress"]), int(row["target_count"])),
+        "completed": bool(row["completed"]),
+        "streak": current,
+        "bestStreak": best,
+        "conditions": conditions,
+    }
+
+
+def advance_daily_quest(conn: sqlite3.Connection, uid: str, species: str) -> None:
+    row = ensure_daily_quest(conn, uid)
+    if int(row["completed"]) or species != row["target_species"]:
+        return
+    progress = int(row["progress"]) + 1
+    target = int(row["target_count"])
+    if progress < target:
+        conn.execute(
+            "UPDATE daily_quests SET progress = ? WHERE uid = ? AND quest_date = ?",
+            (progress, uid, row["quest_date"]),
+        )
+        return
+
+    today = fishing_now().date()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    conn.execute(
+        "UPDATE daily_quests SET progress = ?, completed = 1, completed_at = ? WHERE uid = ? AND quest_date = ?",
+        (target, now_ts(), uid, row["quest_date"]),
+    )
+    streak = conn.execute(
+        "SELECT current_streak, best_streak, last_completed_date FROM daily_streaks WHERE uid = ?",
+        (uid,),
+    ).fetchone()
+    if streak and streak["last_completed_date"] == yesterday:
+        current = int(streak["current_streak"]) + 1
+    elif streak and streak["last_completed_date"] == today.isoformat():
+        current = int(streak["current_streak"])
+    else:
+        current = 1
+    best = max(int(streak["best_streak"]) if streak else 0, current)
+    conn.execute(
+        """
+        INSERT INTO daily_streaks(uid, current_streak, best_streak, last_completed_date)
+        VALUES(?, ?, ?, ?)
+        ON CONFLICT(uid) DO UPDATE SET
+          current_streak = excluded.current_streak,
+          best_streak = excluded.best_streak,
+          last_completed_date = excluded.last_completed_date
+        """,
+        (uid, current, best, today.isoformat()),
+    )
+
+
+def encyclopedia_payload(conn: sqlite3.Connection, uid: str) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT species, COUNT(*) AS count, MAX(length) AS best_length,
+               MIN(caught_at) AS first_at, MAX(caught_at) AS last_at
+        FROM catches WHERE uid = ? GROUP BY species
+        """,
+        (uid,),
+    ).fetchall()
+    found = {row["species"]: row for row in rows}
+    result = []
+    for name in FISH_LIMITS:
+        row = found.get(name)
+        result.append({
+            "name": name,
+            "rare": name in RARE_FISH_RULES,
+            "caught": bool(row),
+            "count": int(row["count"]) if row else 0,
+            "bestLength": int(row["best_length"]) if row else 0,
+            "firstCaughtAt": int(row["first_at"]) if row else None,
+            "lastCaughtAt": int(row["last_at"]) if row else None,
+        })
+    return result
+
+
+def personal_best_payload(conn: sqlite3.Connection, uid: str) -> dict | None:
+    row = conn.execute(
+        "SELECT species, length, caught_at FROM catches WHERE uid = ? ORDER BY length DESC, caught_at DESC LIMIT 1",
+        (uid,),
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "species": row["species"],
+        "length": int(row["length"]),
+        "caughtAt": int(row["caught_at"]),
+    }
+
+
 def window_count(conn: sqlite3.Connection, uid: str, cutoff: int):
     row = conn.execute(
         """
@@ -449,6 +692,9 @@ def state_payload(conn: sqlite3.Connection, uid: str, create: bool = True, ip: s
         "backpack": backpack_items(conn, uid, cutoff),
         "species": species_summary(conn, uid, cutoff),
         "leaderboard": leaderboard(conn, cutoff, uid),
+        "daily": daily_payload(conn, uid),
+        "encyclopedia": encyclopedia_payload(conn, uid),
+        "personalBest": personal_best_payload(conn, uid),
         "windowDays": 30,
         "serverTime": now,
     }
@@ -537,6 +783,31 @@ def admin_feedback_list(conn: sqlite3.Connection, limit: int = 30) -> dict:
                 "createdAt": int(row["created_at"]),
                 "emailStatus": row["email_status"],
                 "emailError": row["email_error"],
+            }
+            for row in rows
+        ],
+    }
+
+
+def admin_audit_list(conn: sqlite3.Connection, limit: int = 30) -> dict:
+    limit = max(1, min(100, limit))
+    rows = conn.execute(
+        """
+        SELECT id, action, target, ip, detail, created_at
+        FROM admin_audit ORDER BY created_at DESC, id DESC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return {
+        "ok": True,
+        "audit": [
+            {
+                "id": row["id"],
+                "action": row["action"],
+                "target": row["target"],
+                "ip": row["ip"],
+                "detail": row["detail"],
+                "createdAt": int(row["created_at"]),
             }
             for row in rows
         ],
@@ -724,7 +995,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("%s - %s" % (self.address_string(), fmt % args), flush=True)
 
-    def _json(self, status: int, payload: dict, set_cookie: str | None = None) -> None:
+    def _is_https(self) -> bool:
+        return (self.headers.get("X-Forwarded-Proto", "") or "").lower() == "https"
+
+    def _cookie_secure(self) -> str:
+        return "; Secure" if self._is_https() else ""
+
+    def _json(self, status: int, payload: dict, set_cookie: str | None = None, extra_headers: dict | None = None) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -736,15 +1013,32 @@ class Handler(BaseHTTPRequestHandler):
         if getattr(self, "_new_uid", None):
             self.send_header(
                 "Set-Cookie",
-                "%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax"
-                % (COOKIE_NAME, self._new_uid, COOKIE_MAX_AGE),
+                "%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s"
+                % (COOKIE_NAME, self._new_uid, COOKIE_MAX_AGE, self._cookie_secure()),
             )
             self._new_uid = None
+        if extra_headers:
+            for key, value in extra_headers.items():
+                self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
-    def _error(self, status: int, message: str) -> None:
-        self._json(status, {"ok": False, "error": message})
+    def _error(self, status: int, message: str, extra_headers: dict | None = None) -> None:
+        self._json(status, {"ok": False, "error": message}, extra_headers=extra_headers)
+
+    def _cookie_uid(self) -> str:
+        cookie_header = self.headers.get("Cookie", "")
+        if not cookie_header:
+            return ""
+        try:
+            cookie = SimpleCookie()
+            cookie.load(cookie_header)
+            morsel = cookie.get(COOKIE_NAME)
+            if morsel and UID_RE.match(morsel.value):
+                return morsel.value
+        except Exception:
+            pass
+        return ""
 
     def _uid(self, legacy_uid: str | None = None) -> str:
         cookie_header = self.headers.get("Cookie", "")
@@ -802,28 +1096,52 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return ""
 
-    def _admin_authorized(self) -> bool:
+    def _admin_session(self) -> dict | None:
         token = self._admin_cookie_value()
         if not token:
-            return False
+            return None
         now = now_ts()
         with _admin_lock:
-            expires = _admin_sessions.get(token)
-            if not expires or expires <= now:
+            session = _admin_sessions.get(token)
+            if not session or int(session.get("expires", 0)) <= now:
                 _admin_sessions.pop(token, None)
-                return False
-            return True
+                return None
+            return session
 
-    def _admin_guard(self) -> bool:
+    def _admin_guard(self, require_csrf: bool = False) -> bool:
         if self.headers.get("X-Admin-Request", "") != "1":
             self.close_connection = True
             self._error(403, "missing admin request header")
             return False
-        if not self._admin_authorized():
+        session = self._admin_session()
+        if session is None:
             self.close_connection = True
             self._error(401, "admin login required")
             return False
+        if require_csrf:
+            supplied = self.headers.get("X-CSRF-Token", "")
+            expected = str(session.get("csrf", ""))
+            if not supplied or not expected or not hmac.compare_digest(supplied, expected):
+                self.close_connection = True
+                self._error(403, "invalid csrf token")
+                return False
+        self._admin_session_data = session
         return True
+
+    def _audit(self, action: str, target: str = "", detail: str = "", conn=None) -> None:
+        own = conn is None
+        if own:
+            conn = connect()
+        try:
+            conn.execute(
+                "INSERT INTO admin_audit(action, target, ip, detail, created_at) VALUES(?, ?, ?, ?, ?)",
+                (action, target, self._client_ip(), detail[:500], now_ts()),
+            )
+            if own:
+                conn.commit()
+        finally:
+            if own:
+                conn.close()
 
     def _admin_login(self) -> None:
         data = self._read_json()
@@ -833,7 +1151,7 @@ class Handler(BaseHTTPRequestHandler):
             recent = [stamp for stamp in _admin_failures.get(ip, []) if now - stamp < 300]
             _admin_failures[ip] = recent
             if len(recent) >= 8:
-                self._error(429, "too many login attempts")
+                self._error(429, "too many login attempts", {"Retry-After": "300"})
                 return
 
         if not ADMIN_SALT or not ADMIN_HASH:
@@ -844,21 +1162,24 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(password, str) or not verify_admin_password(password):
             with _admin_failure_lock:
                 _admin_failures.setdefault(ip, []).append(now)
+            self._audit("login_failed")
             self._error(401, "invalid password")
             return
 
         token = secrets.token_urlsafe(32)
+        csrf = secrets.token_urlsafe(32)
         expires = now_ts() + ADMIN_SESSION_SECONDS
         with _admin_lock:
-            _admin_sessions[token] = expires
+            _admin_sessions[token] = {"expires": expires, "csrf": csrf}
         with _admin_failure_lock:
             _admin_failures.pop(ip, None)
 
         cookie = (
-            "%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict"
-            % (ADMIN_COOKIE, token, ADMIN_SESSION_SECONDS)
+            "%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict%s"
+            % (ADMIN_COOKIE, token, ADMIN_SESSION_SECONDS, self._cookie_secure())
         )
-        self._json(200, {"ok": True, "expiresAt": expires}, set_cookie=cookie)
+        self._audit("login_success")
+        self._json(200, {"ok": True, "expiresAt": expires, "csrfToken": csrf}, set_cookie=cookie)
 
     def _admin_logout(self) -> None:
         try:
@@ -871,7 +1192,8 @@ class Handler(BaseHTTPRequestHandler):
         if token:
             with _admin_lock:
                 _admin_sessions.pop(token, None)
-        cookie = "%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict" % ADMIN_COOKIE
+        self._audit("logout")
+        cookie = "%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict%s" % (ADMIN_COOKIE, self._cookie_secure())
         self._json(200, {"ok": True}, set_cookie=cookie)
 
     def _admin_get(self, parsed) -> None:
@@ -881,6 +1203,14 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         conn = connect()
         try:
+            if path == "/api/fishing/admin/session":
+                session = getattr(self, "_admin_session_data", {})
+                self._json(200, {
+                    "ok": True,
+                    "csrfToken": session.get("csrf", ""),
+                    "expiresAt": session.get("expires", 0),
+                })
+                return
             if path == "/api/fishing/admin/overview":
                 self._json(200, admin_overview(conn))
                 return
@@ -893,6 +1223,13 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 q = (query.get("q") or [""])[0]
                 self._json(200, admin_user_list(conn, q, page, limit))
+                return
+            if path == "/api/fishing/admin/audit":
+                try:
+                    limit = int((query.get("limit") or ["30"])[0])
+                except ValueError:
+                    limit = 30
+                self._json(200, admin_audit_list(conn, limit))
                 return
             if path == "/api/fishing/admin/feedback":
                 try:
@@ -924,7 +1261,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/fishing/admin/logout":
             self._admin_logout()
             return
-        if not self._admin_guard():
+        if not self._admin_guard(require_csrf=True):
             return
 
         data = self._read_json()
@@ -965,6 +1302,7 @@ class Handler(BaseHTTPRequestHandler):
                 if cursor.rowcount == 0:
                     self._error(404, "user not found")
                 else:
+                    self._audit("update_user", uid, "name changed")
                     self._json(200, {"ok": True, "uid": uid, "name": name})
                 return
 
@@ -974,11 +1312,15 @@ class Handler(BaseHTTPRequestHandler):
                     self._error(400, "invalid uid")
                     return
                 conn.execute("DELETE FROM catches WHERE uid = ?", (uid,))
+                conn.execute("DELETE FROM feedback WHERE uid = ?", (uid,))
+                conn.execute("DELETE FROM daily_quests WHERE uid = ?", (uid,))
+                conn.execute("DELETE FROM daily_streaks WHERE uid = ?", (uid,))
                 cursor = conn.execute("DELETE FROM users WHERE uid = ?", (uid,))
                 conn.commit()
                 if cursor.rowcount == 0:
                     self._error(404, "user not found")
                 else:
+                    self._audit("delete_user", uid)
                     self._json(200, {"ok": True, "deletedUser": uid})
                 return
 
@@ -995,6 +1337,7 @@ class Handler(BaseHTTPRequestHandler):
                 if cursor.rowcount == 0:
                     self._error(404, "catch not found")
                 else:
+                    self._audit("delete_catch", str(catch_id))
                     self._json(200, {"ok": True, "deletedCatch": catch_id})
                 return
 
@@ -1037,10 +1380,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             cursor = conn.execute(
                 """
-                INSERT INTO feedback(message, contact, page, ip, created_at, email_status)
-                VALUES(?, ?, ?, ?, ?, 'pending')
+                INSERT INTO feedback(uid, message, contact, page, ip, created_at, email_status)
+                VALUES(?, ?, ?, ?, ?, ?, 'pending')
                 """,
-                (message, contact, page, ip, now_ts()),
+                (self._cookie_uid(), message, contact, page, ip, now_ts()),
             )
             conn.commit()
             feedback_id = cursor.lastrowid
@@ -1152,12 +1495,22 @@ class Handler(BaseHTTPRequestHandler):
             self._error(400, "invalid event id")
             return
 
-        species = clean_text(data.get("species", ""), 16) or "鱼"
+        species = clean_text(data.get("species", ""), 16)
+        if species not in FISH_LIMITS:
+            self._error(400, "未知鱼种")
+            return
+        conditions = get_fishing_conditions()
+        if not species_allowed(species, conditions):
+            self._error(400, "这个时段没有这种鱼")
+            return
         try:
             length = int(data.get("length", 0))
         except (TypeError, ValueError):
             length = 0
-        length = max(0, min(200, length))
+        min_length, max_length = FISH_LIMITS[species]
+        if length < min_length or length > max_length:
+            self._error(400, "鱼的长度不合理")
+            return
         now = now_ts()
         cutoff = now - WINDOW_SECONDS
 
@@ -1187,10 +1540,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, payload)
                 return
 
+            minute_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM catches WHERE uid = ? AND caught_at >= ?",
+                    (uid, now - 60),
+                ).fetchone()[0]
+            )
+            day_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM catches WHERE uid = ? AND caught_at >= ?",
+                    (uid, now - 86400),
+                ).fetchone()[0]
+            )
+            if minute_count >= CATCH_RATE_PER_MINUTE or day_count >= CATCH_RATE_PER_DAY:
+                self._error(429, "渔获太频繁，请稍后再试")
+                return
+
             cursor = conn.execute(
                 "INSERT INTO catches(event_id, uid, species, length, caught_at) VALUES(?, ?, ?, ?, ?)",
                 (event_id, uid, species, length, now),
             )
+            advance_daily_quest(conn, uid, species)
             conn.commit()
             item = {
                 "id": cursor.lastrowid,

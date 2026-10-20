@@ -11,6 +11,8 @@
 - 管理接口的每个用户会返回 `lastIp`、`ipLocation`、`ipIsp`、`ipStatus` 字段
 - 称呼写入时检查唯一性；非空称呼不能重复，忽略英文大小写，「无名钓客」为保留名称
 - 每次钓到鱼写入一条背包记录：鱼种、长度、上钩时间
+- 每日目标/连续天数写入 daily_quests、daily_streaks；图鉴和个人最佳由保留的渔获聚合
+- 稀有鱼只在当前时段/天气匹配时可入库
 - 公开背包/榜单展示最近 30 天；数据库保留策略：有渔获 6 个月，有称呼无渔获 3 个月，无称呼无渔获 1 个月（滚动）
 - 事件 ID 唯一约束：同一渔获重试不会重复计数
 - 旧版的 localStorage UID 可以通过 `?legacy_uid=...` 在首次请求时认领，保留已经同步到服务器的历史渔获
@@ -18,39 +20,41 @@
 ## 接口
 
 - `GET /api/fishing/health`
-- `GET /api/fishing/me` → 用户数据 + 背包 + 鱼种统计 + 全站榜
+- `GET /api/fishing/me` → 用户数据 + 背包 + 鱼种统计 + 全站榜 + 每日目标 + 图鉴 + 个人最佳
 - `POST /api/fishing/profile` → `{name}`；非空称呼重复时返回 409
-- `POST /api/fishing/catch` → `{event_id, species, length}`
+- `POST /api/fishing/catch` → `{event_id, species, length}`；校验鱼种、长度区间、当前时段/天气和频率
+- 渔获响应包含 `daily`、`encyclopedia`、`personalBest`，用于每日进度、图鉴和个人最佳
 - `POST /api/fishing/feedback` → `{message, contact, page, website}`，反馈入库并尝试发到站长邮箱
 
 ## 后台管理
 
-后台页面：`/<admin-path>/`，由 nginx 从 `/path/to/admin/` 提供；旧 `/admin/` 已返回 404。接口全部在 `/api/fishing/admin/` 下：
+后台页面：`/<admin-path>/`，由 nginx 从 `/path/to/site/<admin-path>/` 提供；旧 `/admin/` 已返回 404。接口全部在 `/api/fishing/admin/` 下：
 
-- `POST /api/fishing/admin/login` → `{password}`，成功后写入 12 小时 HttpOnly 会话 Cookie
+- `POST /api/fishing/admin/login` → `{password}`，成功后写入 12 小时 HttpOnly 会话 Cookie，并返回 CSRF Token
 - `POST /api/fishing/admin/logout`
 - `GET /api/fishing/admin/overview`
 - `GET /api/fishing/admin/feedback?limit=`
+- `GET /api/fishing/admin/audit?limit=`
 - `GET /api/fishing/admin/users?q=&page=&limit=`
 - `GET /api/fishing/admin/user?uid=`
 - `POST /api/fishing/admin/update-user` → `{uid, name}`
 - `POST /api/fishing/admin/delete-catch` → `{id}`
 - `POST /api/fishing/admin/delete-user` → `{uid}`
 
-除登录和退出外，管理接口要求已登录会话，并携带 `X-Admin-Request: 1`。登录失败 5 分钟内最多 8 次。
+除登录和退出外，管理接口要求已登录会话，并携带 `X-Admin-Request: 1`。修改类请求还要求 `X-CSRF-Token`；Token 通过登录响应或 `GET /api/fishing/admin/session` 获取。登录失败 5 分钟内最多 8 次，超限返回 Retry-After。后台操作写入 admin_audit 表。
 
-密码不写在代码里。`/path/to/admin.env` 保存 PBKDF2 盐和哈希，systemd 通过 `EnvironmentFile` 注入。重新生成密码：
+密码不写在代码里。`/path/to/forest-cabin-api/admin.env` 保存 PBKDF2 盐和哈希，systemd 通过 `EnvironmentFile` 注入。重新生成密码：
 
 ```bash
-python3 set_admin_password.py '新密码' | sudo tee /path/to/admin.env
-sudo chown root:www-data /path/to/admin.env
-sudo chmod 640 /path/to/admin.env
+python3 set_admin_password.py '新密码' | sudo tee /path/to/forest-cabin-api/admin.env
+sudo chown root:www-data /path/to/forest-cabin-api/admin.env
+sudo chmod 640 /path/to/forest-cabin-api/admin.env
 sudo systemctl restart forest-cabin-api.service
 ```
 
 ## 数据位置
 
-- 数据库：`/path/to/fishing.db`
+- 数据库：`/path/to/forest-cabin-api/data/fishing.db`
 - 表：`users`（含 `last_ip`）、`catches`、`ip_geo`（IP 地理位置缓存）、`feedback`（反馈与邮件状态）
 - 反馈邮件默认通过 FormSubmit 转发到 `you@example.com`，首次需要在邮箱点击 Activate Form；也可改用 SMTP
 - systemd：`forest-cabin-api.service`，运行用户 `www-data`

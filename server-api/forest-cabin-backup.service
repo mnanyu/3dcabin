@@ -1,0 +1,14 @@
+[Unit]
+Description=Forest Cabin SQLite backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/forest-cabin-api
+EnvironmentFile=-/path/to/forest-cabin-api/admin.env
+ExecStart=/usr/bin/python3 /path/to/forest-cabin-api/backup_db.py
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
